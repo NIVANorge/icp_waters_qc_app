@@ -2,7 +2,7 @@
 
 Quality checking of data templates submitted to the [ICP Waters](https://www.icp-waters.no/) database.
 
-The app is publicly available here (**To do**).
+The app is publicly available [here](https://nivanorge-icp-waters-qc-app-app-0oc2fp.streamlitapp.com/).
 
 ## Testing and development
 
