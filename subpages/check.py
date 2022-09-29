@@ -333,7 +333,7 @@ def check_stations(df, stn_df):
     if not set(df["Code"]).issubset(set(stn_df["station_code"])):
         n_errors += 1
         st.markdown(
-            "The following stations codes are not in the definitive station list."
+            "The following station codes are not in the definitive station list."
         )
         st.code(set(df["Code"]) - set(stn_df["station_code"]))
 
@@ -362,7 +362,7 @@ def check_stations(df, stn_df):
         ids = df.query("Name == @site_name")["Code"].unique()
 
         if len(ids) > 1:
-            msg += f"\n * **{site_name}** has IDs: `{ids}`"
+            msg += f"\n * **{site_name}** has codes: `{ids}`"
     if msg != "":
         n_errors += 1
         st.markdown(
