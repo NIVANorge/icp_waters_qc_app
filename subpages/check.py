@@ -1,7 +1,10 @@
+import folium
 import numpy as np
 import pandas as pd
 import streamlit as st
+from folium.plugins import FastMarkerCluster, MarkerCluster
 from st_aggrid import AgGrid
+from streamlit_folium import folium_static
 
 IDX_COLS = [
     "Code",
@@ -82,7 +85,7 @@ def app():
             st.markdown(f"**File name:** `{data_file.name}`")
             AgGrid(df, height=400)
 
-        # # Begin QC checks
+        # Begin QC checks
         check_columns(df)
         check_parameters(df)
         check_numeric(df)
@@ -367,6 +370,18 @@ def check_stations(df, stn_df):
         )
         st.markdown(msg)
 
+    st.markdown("The template contains data for the following stations:")
+    template_stns = df["Code"].unique()
+    country_stn_df = stn_df.query("station_code in @template_stns")
+    stn_map = quickmap(
+        country_stn_df,
+        cluster=True,
+        popup="station_code",
+        aerial_imagery=True,
+        kartverket=False,
+    )
+    folium_static(stn_map, width=700)
+
     if n_errors == 0:
         st.success("OK!")
     else:
@@ -616,3 +631,136 @@ def check_outliers(df, iqr_factor=3):
     """
     st.subheader("Outliers")
     st.warning(f"WARNING: Check not yet implemented.")
+
+
+def quickmap(
+    df,
+    lon_col="longitude",
+    lat_col="latitude",
+    popup=None,
+    cluster=False,
+    tiles="Stamen Terrain",
+    aerial_imagery=False,
+    kartverket=False,
+    layer_name="Stations",
+):
+    """Make an interactive map from a point dataset. Can be used with any dataframe
+    containing lat/lon co-ordinates (in WGS84 decimal degrees), but primarily
+    designed to be used directly with the functions in nivapy.da.
+
+    Args
+        df:            Dataframe. Must include columns for lat and lon in WGS84 decimal degrees
+        lon_col:       Str. Column with longitudes
+        lat_col:       Str. Column with latitudes
+        popup:         Str or None. Default None. Column containing text for popup labels
+        cluster:       Bool. Whether to implement marker clustering
+        tiles:         Str. Basemap to use. See folium.Map for full details. Choices:
+                            - 'OpenStreetMap'
+                            - 'Mapbox Bright' (Limited levels of zoom for free tiles)
+                            - 'Mapbox Control Room' (Limited levels of zoom for free tiles)
+                            - 'Stamen' (Terrain, Toner, and Watercolor)
+                            - 'Cloudmade' (Must pass API key)
+                            - 'Mapbox' (Must pass API key)
+                            - 'CartoDB' (positron and dark_matter)
+                            - Custom tileset by passing a Leaflet-style URL to the tiles
+                              parameter e.g. http://{s}.yourtiles.com/{z}/{x}/{y}.png
+        aerial_imagery: Bool. Whether to include Google satellite serial imagery as an
+                        additional layer
+        kartverket:     Bool. Whether to include Kartverket's topographic map as an additonal
+                        layer
+        layer_name:     Str. Name of layer to create in "Table of Contents"
+
+    Returns
+        Folium map
+    """
+    # Drop NaN
+    df2 = df.dropna(subset=[lon_col, lat_col])
+
+    # Get data
+    if popup:
+        df2 = df2[[lat_col, lon_col, popup]]
+        df2[popup] = df2[popup].astype(str)
+    else:
+        df2 = df2[[lat_col, lon_col]]
+
+    # Setup map
+    avg_lon = df2[lon_col].mean()
+    avg_lat = df2[lat_col].mean()
+    map1 = folium.Map(location=[avg_lat, avg_lon], zoom_start=4, tiles=tiles)
+
+    # Add aerial imagery if desired
+    if aerial_imagery:
+        folium.raster_layers.TileLayer(
+            tiles="http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+            attr="google",
+            name="Google satellite",
+            max_zoom=20,
+            subdomains=["mt0", "mt1", "mt2", "mt3"],
+            overlay=False,
+            control=True,
+        ).add_to(map1)
+
+    if kartverket:
+        folium.raster_layers.TileLayer(
+            tiles="https://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=topo4&zoom={z}&x={x}&y={y}",
+            attr="karkverket",
+            name="Kartverket topographic",
+            overlay=False,
+            control=True,
+        ).add_to(map1)
+
+    # Add feature group to map
+    grp = folium.FeatureGroup(name=layer_name)
+
+    # Draw points
+    if cluster and popup:
+        locs = list(zip(df2[lat_col].values, df2[lon_col].values))
+        popups = list(df2[popup].values)
+
+        # Marker cluster with labels
+        marker_cluster = MarkerCluster(locations=locs, popups=popups)
+        grp.add_child(marker_cluster)
+        grp.add_to(map1)
+
+    elif cluster and not popup:
+        locs = list(zip(df2[lat_col].values, df2[lon_col].values))
+        marker_cluster = FastMarkerCluster(data=locs)
+        grp.add_child(marker_cluster)
+        grp.add_to(map1)
+
+    elif not cluster and popup:  # Plot separate circle markers, with popup
+        for idx, row in df2.iterrows():
+            marker = folium.CircleMarker(
+                location=[row[lat_col], row[lon_col]],
+                radius=5,
+                weight=1,
+                color="black",
+                popup=folium.Popup(row[popup], parse_html=False),
+                fill_color="red",
+                fill_opacity=1,
+            )
+            grp.add_child(marker)
+        grp.add_to(map1)
+
+    else:  # Plot separate circle markers, no popup
+        for idx, row in df2.iterrows():
+            marker = folium.CircleMarker(
+                location=[row[lat_col], row[lon_col]],
+                radius=5,
+                weight=1,
+                color="black",
+                fill_color="red",
+                fill_opacity=1,
+            )
+            grp.add_child(marker)
+        grp.add_to(map1)
+
+    # Add layer control
+    folium.LayerControl().add_to(map1)
+
+    # Zoom to data
+    xmin, xmax = df2[lon_col].min(), df2[lon_col].max()
+    ymin, ymax = df2[lat_col].min(), df2[lat_col].max()
+    map1.fit_bounds([[ymin, xmin], [ymax, xmax]])
+
+    return map1
