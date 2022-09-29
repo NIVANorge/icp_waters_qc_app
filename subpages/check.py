@@ -151,8 +151,7 @@ def check_columns(df):
     if n_errors > 0:
         st.error(
             "ERROR: Some column names are not recognised. Please use the template available "
-            "here:\n\n"
-            "https://github.com/NIVANorge/icp_waters_qc_app/blob/main/data/icpw_input_template_chem_v0-3.xlsx"
+            "[here](https://github.com/NIVANorge/icp_waters_qc_app/blob/main/data/icpw_input_template_chem_v0-4.xlsx)."
         )
         st.stop()
     else:
@@ -311,6 +310,7 @@ def check_greater_than_zero(df):
             "positive, except for columns `Alk_µeq/L` and `LAl_µg/L`, which permit values of zero, "
             "and `TEMP_C`, which can be negative."
         )
+        st.stop()
 
     return None
 
@@ -411,9 +411,9 @@ def check_duplicates(df):
         )
         AgGrid(dup_df, height=200)
         st.error(
-            "ERROR: The template contains multiple samples for the same location and date. Please note "
-            "that only **surface samples** (depth ≤ 0.5 m) are relevant to ICP Waters (see the `Info` "
-            "worksheet of the template for details)."
+            "ERROR: The template contains multiple samples for the same location and date.\n\nPlease note "
+            "that only **surface samples** (depth ≤ 0.5 m) are relevant to ICP Waters - see the `Info` "
+            "worksheet of the template for details."
         )
         st.stop()
     else:

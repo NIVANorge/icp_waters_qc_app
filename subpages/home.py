@@ -6,7 +6,7 @@ def app():
     st.markdown(
         """This application implements preliminary quality checking of data submitted to 
            [ICP Waters](https://www.icp-waters.no/). Data must be supplied using the Excel template available 
-           [here](https://github.com/NIVANorge/icp_waters_qc_app/blob/main/data/icpw_input_template_chem_v0-3.xlsx) 
+           [here](https://github.com/NIVANorge/icp_waters_qc_app/blob/main/data/icpw_input_template_chem_v0-4.xlsx) 
            (please do not modify any column headings).
     """
     )
@@ -43,8 +43,9 @@ def app():
         st.info(
             """**Tip:** If you wish to try out the app, you can download Excel files containing "fake errors" 
                to illustrate how the tests work. Click the Excel files 
-               [here](https://github.com/NIVANorge/icp_waters_qc_app/tree/main/app/data/test_data) and use the
-               `Download` button to save each file to your local machine.
+               [here](https://github.com/NIVANorge/icp_waters_qc_app/tree/main/data/test_data) and use the
+               `Download` button to save each file to your local machine (alternatively, if you are familiar 
+               with GitHub, you can simply clone the entire repository).
         """
         )
 
