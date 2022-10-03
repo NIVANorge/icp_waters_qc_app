@@ -72,7 +72,7 @@ def app():
     stn_df = pd.read_excel(r"./data/icpw_all_stations.xlsx", sheet_name="stations")
     # countries = [None] + sorted(stn_df["country"].unique())
     # country = st.sidebar.selectbox("Select country:", countries)
-    data_file = st.sidebar.file_uploader("Upload data")
+    data_file = st.sidebar.file_uploader("Upload template")
 
     # if country:
     #     stn_df = stn_df.query("country == @country")
@@ -81,9 +81,10 @@ def app():
         with st.spinner("Reading data..."):
             df = read_data_template(data_file)
             st.header("Raw data")
-            st.markdown("The raw data from Excel are shown in the table below.")
+            # st.markdown("The raw data from Excel are shown in the table below.")
             st.markdown(f"**File name:** `{data_file.name}`")
-            AgGrid(df, height=400)
+            # AgGrid(df, height=400)
+            st.markdown("Please **scroll down** to see results from the quality checks.")
 
         # Begin QC checks
         check_columns(df)
@@ -184,7 +185,7 @@ def check_parameters(df):
             "ERROR: Some required parameters are not included. Please see the `Info` worksheet of the "
             "template for details."
         )
-        st.stop()
+        # st.stop()
     else:
         st.success("OK!")
 
@@ -271,11 +272,11 @@ def check_greater_than_zero(df):
         "Name",
         "Date",
     ]
-    allow_zero_cols = ["Alk_µeq/L", "LAl_µg/L"]
+    allow_neg_cols = ["Alk_µeq/L", "TEMP_C"]
+    allow_zero_cols = ["LAl_µg/L"]
     gt_zero_cols = [
-        col for col in df.columns if col not in (non_num_cols + allow_zero_cols)
+        col for col in df.columns if col not in (non_num_cols + allow_neg_cols + allow_zero_cols)
     ]
-    gt_zero_cols.remove("TEMP_C")
     n_errors = 0
     for col in gt_zero_cols:
         # num_series = pd.to_numeric(
@@ -310,8 +311,8 @@ def check_greater_than_zero(df):
     else:
         st.error(
             "ERROR: Some reported values are less than or equal to zero. Values should all be "
-            "positive, except for columns `Alk_µeq/L` and `LAl_µg/L`, which permit values of zero, "
-            "and `TEMP_C`, which can be negative."
+            "positive, except for column `LAl_µg/L` (which permit values of zero), "
+            "and columns `Alk_µeq/L` and `TEMP_C` (which can be negative)."
         )
         st.stop()
 
