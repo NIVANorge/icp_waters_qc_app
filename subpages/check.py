@@ -114,7 +114,7 @@ def app():
             df = calculate_gamma(df)
             df = calculate_theoretical_conductivity(df)
             df = check_conductivity(df, thresh_pct=10)
-            check_outliers(df)
+            check_outliers(df, thresh=3.5)
 
     return None
 
@@ -260,12 +260,7 @@ def check_numeric(df):
         None. Problems identified are printed to output.
     """
     st.header("Checking for non-numeric data")
-    non_num_cols = [
-        "Code",
-        "Name",
-        "Date",
-    ]
-    num_cols = [col for col in df.columns if col not in non_num_cols]
+    num_cols = [col for col in df.columns if col not in IDX_COLS]
     n_errors = 0
     for col in num_cols:
         # num_series = pd.to_numeric(
@@ -304,17 +299,12 @@ def check_greater_than_zero(df):
         None. Problems identified are printed to output.
     """
     st.header("Checking for negative and zero values")
-    non_num_cols = [
-        "Code",
-        "Name",
-        "Date",
-    ]
     allow_neg_cols = ["Alk_µeq/L", "TEMP_C"]
     allow_zero_cols = ["LAl_µg/L"]
     gt_zero_cols = [
         col
         for col in df.columns
-        if col not in (non_num_cols + allow_neg_cols + allow_zero_cols)
+        if col not in (IDX_COLS + allow_neg_cols + allow_zero_cols)
     ]
     n_errors = 0
     for col in gt_zero_cols:
@@ -650,12 +640,7 @@ def convert_to_numeric(df):
     Returns
         DataFrame. Chemistry cols in 'df' are converted to numeric.
     """
-    non_num_cols = [
-        "Code",
-        "Name",
-        "Date",
-    ]
-    num_cols = [col for col in df.columns if col not in non_num_cols]
+    num_cols = [col for col in df.columns if col not in IDX_COLS]
     for col in num_cols:
         df[col] = pd.to_numeric(
             df[col].fillna(-9999).astype(str).str.strip("<"),
@@ -718,7 +703,9 @@ def calculate_oh_and_h(df):
         df["OH_µeq/L"] = 1e6 * 10 ** -(14 - df["pH"])
         df["H_µeq/L"] = 1e6 * 10 ** -(df["pH"])
     else:
-        st.warning(f"WARNING: Parameter 'pH' not provided. Stopping checks.")
+        st.warning(
+            "WARNING: Cannot calculate **H+ and OH-**.  \n\nMissing parameters: `pH`"
+        )
 
     return df
 
@@ -739,8 +726,8 @@ def calculate_a_minus(df):
     else:
         missing_pars = [col for col in req_pars if col not in df.columns]
         st.warning(
-            "WARNING: Cannot calculate **A-**. Stopping checks.  "
-            f"\n\nMissing parameters:  \n\n    {missing_pars}"
+            "WARNING: Cannot calculate **A-**."
+            f"\n\nMissing parameters:  \n\n{missing_pars}"
         )
 
     return df
@@ -790,8 +777,8 @@ def calculate_cations_and_anions(df):
     else:
         missing_pars = [col for col in req_pars if col not in df.columns]
         st.warning(
-            "WARNING: Cannot calculate **total cations and anions**. Stopping checks.  "
-            f"\n\nMissing parameters:  \n\n    {missing_pars}"
+            "WARNING: Cannot calculate **total cations and anions**."
+            f"\n\nMissing parameters:  \n\n{missing_pars}"
         )
 
     return df
@@ -890,8 +877,8 @@ def calculate_ion_strength(df):
     else:
         missing_pars = [col for col in req_pars if col not in df.columns]
         st.warning(
-            "WARNING: Cannot calculate **ion strength**. Stopping checks.  "
-            f"\n\nMissing parameters:  \n\n    {missing_pars}"
+            "WARNING: Cannot calculate **ion strength**."
+            f"\n\nMissing parameters:  \n\n{missing_pars}"
         )
 
     return df
@@ -922,7 +909,9 @@ def calculate_gamma(df):
             )
         )
     else:
-        st.warning(f"WARNING: Parameter 'ion_strength' not provided. Stopping checks.")
+        st.warning(
+            "WARNING: Cannot calculate **gamma**.  \n\nMissing parameters: `ion_strength`"
+        )
 
     return df
 
@@ -974,8 +963,8 @@ def calculate_theoretical_conductivity(df):
     else:
         missing_pars = [col for col in req_pars if col not in df.columns]
         st.warning(
-            "WARNING: Cannot calculate **theoretical conductivity**. Stopping checks.  "
-            f"\n\nMissing parameters:  \n\n    {missing_pars}"
+            "WARNING: Cannot calculate **theoretical conductivity**."
+            f"\n\nMissing parameters:  \n\n{missing_pars}"
         )
 
     return df
@@ -1044,21 +1033,100 @@ def check_conductivity(df, thresh_pct=10):
     return df
 
 
-def check_outliers(df, iqr_factor=3):
-    """Identify outlier as points more than
+def double_mad_from_median(data, thresh=3.5):
+    """Simple test for outliers in 1D data. Based on the standard MAD approach, but
+    modified slightly to allow for skewed datasets. See the example in R here:
 
-            IQR * iqr_factor
+    http://eurekastatistics.com/using-the-median-absolute-deviation-to-find-outliers/
 
-    above or below the limits of the IQR.
+    (especially the section "Unsymmetric Distributions and the Double MAD". The
+    Python code is based on this post
+
+    https://stackoverflow.com/a/29222992/505698
+
+    See also here
+
+    https://stackoverflow.com/a/22357811/505698
 
     Args
-        df: Dataframe of sumbitted water chemistry data
+        data:   Array-like. 1D array of values.
+        thresh: Float. Default 3.5. Larger values detect fewer outliers. See the
+                section entitled "Z-Scores and Modified Z-Scores" here
+                https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h.htm
+
+    Returns
+        Array of Bools where ones indicate outliers.
+    """
+    # Remove NaNs
+    data = data[~np.isnan(data)]
+
+    m = np.median(data)
+    abs_dev = np.abs(data - m)
+    left_mad = np.median(abs_dev[data <= m])
+    right_mad = np.median(abs_dev[data >= m])
+    if (left_mad == 0) or (right_mad == 0):
+        # Don't identify any outliers. Not strictly correct - see links above!
+        return np.zeros_like(data, dtype=bool)
+
+    data_mad = left_mad * np.ones(len(data))
+    data_mad[data > m] = right_mad
+    modified_z_score = 0.6745 * abs_dev / data_mad
+    modified_z_score[data == m] = 0
+
+    return modified_z_score > thresh
+
+
+def check_outliers(df, thresh=3.5):
+    """Identify outliers using "double MAD" approach.
+    Args
+        df:     Dataframe of sumbitted water chemistry data
+        thresh: Float. Default 3.5. Larger values detect fewer outliers. See the
+                section entitled "Z-Scores and Modified Z-Scores" here
+                https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h.htm
 
     Returns
         None. Problems identified are printed to output.
     """
     st.subheader("Outliers")
-    st.warning(f"WARNING: Check not yet implemented.")
+    num_cols = [
+        col
+        for col in df.columns
+        if col in (MINIMUM_COLS + DESIRABLE_COLS + OPTIONAL_COLS)
+    ]
+    n_errors = 0
+    df_list = []
+    for col in num_cols:
+        outlier_df = df[IDX_COLS + [col]].dropna(how="any")
+        outlier_df = outlier_df.loc[double_mad_from_median(outlier_df[col], thresh=3.5)]
+        outlier_df.set_index(IDX_COLS, inplace=True)
+        if len(outlier_df) > 0:
+            n_errors += 1
+            df_list.append(outlier_df)
+    if n_errors > 0:
+        outlier_df = pd.concat(df_list, axis="columns").reset_index()
+        outlier_df.sort_values(["Code", "Date"], inplace=True)
+        st.markdown(
+            f"There are **{len(outlier_df)}** samples with possible outliers.\n"
+        )
+        AgGrid(outlier_df, height=200)
+        with st.spinner("Preparing data for download..."):
+            st.markdown(
+                "The outlier dataset can be **downloaded to Excel** for further checking."
+            )
+            excel_bytes = prepare_df_for_download(outlier_df)
+            st.download_button(
+                label="Download data",
+                data=excel_bytes,
+                file_name="possible_outliers.xlsx",
+            )
+        st.warning(
+            "WARNING: Possible outliers detected for some samples.  \n\n"
+            "(Please note that the outlier detection algorithm is simple and considers the "
+            "values for each parameter independently). "
+        )
+        # st.stop()
+    else:
+        st.success("OK!")
 
 
 def quickmap(
