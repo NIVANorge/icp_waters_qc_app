@@ -1095,14 +1095,28 @@ def check_outliers(df, thresh=3.5):
         if col in (MINIMUM_COLS + DESIRABLE_COLS + OPTIONAL_COLS)
     ]
     n_errors = 0
+    n_dups = 0
     df_list = []
     for col in num_cols:
         outlier_df = df[IDX_COLS + [col]].dropna(how="any")
         outlier_df = outlier_df.loc[double_mad_from_median(outlier_df[col], thresh=3.5)]
+        # Duplicates cause problems with pd.concat below. They should have been flagged and
+        # removed by users earlier, but check explicitly here and warn again if necessary
+        if outlier_df.duplicated(subset=["Code", "Date"]).any():
+            n_dups += 1
+            outlier_df.drop_duplicates(
+                subset=["Code", "Date"], keep=False, inplace=True
+            )
         outlier_df.set_index(IDX_COLS, inplace=True)
         if len(outlier_df) > 0:
             n_errors += 1
             df_list.append(outlier_df)
+
+    if n_dups > 0:
+        st.warning(
+            "WARNING: The dataset includes **duplicates** which should be checked (see above). "
+            "These will be ignored by the outlier detection algorthim."
+        )
     if n_errors > 0:
         outlier_df = pd.concat(df_list, axis="columns").reset_index()
         outlier_df.sort_values(["Code", "Date"], inplace=True)
