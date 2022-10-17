@@ -119,7 +119,6 @@ def app():
     return None
 
 
-@st.cache
 def prepare_df_for_download(df):
     """Convert dataframe to bytes for download.
 
@@ -805,6 +804,7 @@ def check_ion_balance(df, thresh_pct=10):
             100 * (df["Cations_µeq/L"] - df["Anions_µeq/L"]) / df["Cations_µeq/L"]
         )
         mask_df = df.query("(Zdiff_pct > @thresh_pct) or (Zdiff_pct < -@thresh_pct)")
+        mask_df.sort_values(["Code", "Date"], inplace=True)
         if len(mask_df) > 0:
             # Get relevant cols to display
             cols = (
@@ -995,6 +995,7 @@ def check_conductivity(df, thresh_pct=10):
         mask_df = df.query(
             "(CondDiff_pct > @thresh_pct) or (CondDiff_pct < -@thresh_pct)"
         )
+        mask_df.sort_values(["Code", "Date"], inplace=True)
         if len(mask_df) > 0:
             # Get relevant cols to display
             cols = (
