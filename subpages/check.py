@@ -1,3 +1,5 @@
+from io import BytesIO
+
 import folium
 import numpy as np
 import pandas as pd
@@ -80,28 +82,63 @@ def app():
     if data_file:
         with st.spinner("Reading data..."):
             df = read_data_template(data_file)
-            st.header("Raw data")
+            # st.header("Raw data")
             # st.markdown("The raw data from Excel are shown in the table below.")
             st.markdown(f"**File name:** `{data_file.name}`")
             # AgGrid(df, height=400)
-            st.markdown("Please **scroll down** to see results from the quality checks.")
+            st.markdown(
+                "Please **scroll down** to see results from the quality checks."
+            )
 
-        # Begin QC checks
-        check_columns(df)
-        check_parameters(df)
-        check_numeric(df)
-        check_greater_than_zero(df)
-        check_stations(df, stn_df)
-        check_duplicates(df)
-        st.header("Checking water chemistry")
-        check_no3_totn(df)
-        check_po4_totp(df)
-        check_ral_ilal_lal(df)
-        check_lal_ph(df)
-        check_ion_balance(df)
-        check_outliers(df)
+        with st.spinner("Checking data..."):
+            check_columns(df)
+            check_parameters(df)
+            check_numeric(df)
+            check_greater_than_zero(df)
+            check_stations(df, stn_df)
+            check_duplicates(df)
+            st.header("Checking water chemistry")
+            check_no3_totn(df)
+            check_po4_totp(df)
+            check_ral_ilal_lal(df)
+            check_lal_ph(df)
+            st.subheader("Ion balance")
+            df = convert_to_numeric(df)
+            df = convert_to_microequivalents(df)
+            df = calculate_oh_and_h(df)
+            df = calculate_a_minus(df)
+            df = calculate_cations_and_anions(df)
+            df = check_ion_balance(df, thresh_pct=10)
+            st.subheader("Conductivity")
+            df = calculate_ion_strength(df)
+            df = calculate_gamma(df)
+            df = calculate_theoretical_conductivity(df)
+            df = check_conductivity(df, thresh_pct=10)
+            check_outliers(df)
 
     return None
+
+
+@st.cache
+def prepare_df_for_download(df):
+    """Convert dataframe to bytes for download.
+
+    Args
+        df: Fataframe to be converted
+
+    Returns
+        Bytes.
+    """
+    output = BytesIO()
+    with pd.ExcelWriter(output) as writer:
+        readme_sheet = writer.book.create_sheet(title="readme")
+        msg = "Data exported from the ICP Waters quality checking app."
+        readme_sheet.cell(column=1, row=1, value=msg)
+        df.to_excel(writer, index=False, sheet_name="data")
+
+    data = output.getvalue()
+
+    return data
 
 
 def read_data_template(file_path):
@@ -275,7 +312,9 @@ def check_greater_than_zero(df):
     allow_neg_cols = ["Alk_µeq/L", "TEMP_C"]
     allow_zero_cols = ["LAl_µg/L"]
     gt_zero_cols = [
-        col for col in df.columns if col not in (non_num_cols + allow_neg_cols + allow_zero_cols)
+        col
+        for col in df.columns
+        if col not in (non_num_cols + allow_neg_cols + allow_zero_cols)
     ]
     n_errors = 0
     for col in gt_zero_cols:
@@ -314,7 +353,7 @@ def check_greater_than_zero(df):
             "positive, except for column `LAl_µg/L` (which permit values of zero), "
             "and columns `Alk_µeq/L` and `TEMP_C` (which can be negative)."
         )
-        st.stop()
+        # st.stop()
 
     return None
 
@@ -394,7 +433,7 @@ def check_stations(df, stn_df):
             "missing or incorrect, or if you would like to add a new station to the database."
         )
         AgGrid(stn_df, height=400)
-        st.stop()
+        # st.stop()
 
     return None
 
@@ -431,7 +470,7 @@ def check_duplicates(df):
             "that only **surface samples** (depth ≤ 0.5 m) are relevant to ICP Waters - see the `Info` "
             "worksheet of the template for details."
         )
-        st.stop()
+        # st.stop()
     else:
         st.success("OK!")
 
@@ -601,6 +640,163 @@ def check_lal_ph(df):
     return None
 
 
+def convert_to_numeric(df):
+    """Convert a chemistry columns in a dataframe to numeric values. LOD values
+    beginning with '<' are replaced with the LOD itself.
+
+    Args
+        df:  Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. Chemistry cols in 'df' are converted to numeric.
+    """
+    non_num_cols = [
+        "Code",
+        "Name",
+        "Date",
+    ]
+    num_cols = [col for col in df.columns if col not in non_num_cols]
+    for col in num_cols:
+        df[col] = pd.to_numeric(
+            df[col].fillna(-9999).astype(str).str.strip("<"),
+            errors="coerce",
+        )
+        df[col].replace(-9999, np.nan, inplace=True)
+
+        # Remove columns that are all NaN
+        if df[col].isna().all():
+            del df[col]
+
+    return df
+
+
+def convert_to_microequivalents(df):
+    """Basic conversion from mass/l to microequivalents/l.
+
+    Args
+        df: Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. New columns are added with valuyes in µeq/L.
+    """
+    chem_prop_df = pd.read_csv(r"./data/chemical_properties.csv")
+
+    for idx, row in chem_prop_df.iterrows():
+        par_unit = row["par"]
+        valency = row["valency"]
+        molar_mass = row["molar_mass"]
+
+        if par_unit in df.columns:
+            # Separate par and unit
+            parts = par_unit.split("_")
+            par = "_".join(parts[:-1])
+            unit = parts[-1]
+
+            # Determine unit factor
+            if unit[0] == "m":
+                factor = 1000
+            elif unit[0] == "µ":
+                factor = 1
+            else:
+                raise ValueError("Unit factor could not be identified.")
+
+            df[f"{par}_µeq/L"] = df[par_unit] * valency * factor / molar_mass
+
+    return df
+
+
+def calculate_oh_and_h(df):
+    """Calculate H+ and OH-.
+
+    Args
+        df: Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. Two new columns are added.
+    """
+    if "pH" in df.columns:
+        df["OH_µeq/L"] = 1e6 * 10 ** -(14 - df["pH"])
+        df["H_µeq/L"] = 1e6 * 10 ** -(df["pH"])
+    else:
+        st.warning(f"WARNING: Parameter 'pH' not provided. Stopping checks.")
+
+    return df
+
+
+def calculate_a_minus(df):
+    """Calculate A-.
+
+    Args
+        df: Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. Column 'A-_µeq/L' is added.
+    """
+    req_pars = ["TOC_mgC/L", "pH"]
+    df_pars = list(df.columns)
+    if all(par in df_pars for par in req_pars):
+        df["A-_µeq/L"] = df["TOC_mgC/L"] * (1.77 * df["pH"] - 3)
+    else:
+        missing_pars = [col for col in req_pars if col not in df.columns]
+        st.warning(
+            "WARNING: Cannot calculate **A-**. Stopping checks.  "
+            f"\n\nMissing parameters:  \n\n    {missing_pars}"
+        )
+
+    return df
+
+
+def calculate_cations_and_anions(df):
+    """Calculates total cations and anions.
+
+    Args
+        df: Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. Columns 'Cations_µeq/L' and 'Anions_µeq/L' are added.
+    """
+    req_pars = [
+        "Ca_µeq/L",
+        "Mg_µeq/L",
+        "Na_µeq/L",
+        "K_µeq/L",
+        "NH4-N_µeq/L",
+        "H_µeq/L",
+        "LAl_µeq/L",
+        "Cl_µeq/L",
+        "SO4_µeq/L",
+        "NO3-N_µeq/L",
+        "Alk_µeq/L",
+        "A-_µeq/L",
+    ]
+    df_pars = list(df.columns)
+    if all(par in df_pars for par in req_pars):
+        df["Cations_µeq/L"] = (
+            df["Ca_µeq/L"]
+            + df["Mg_µeq/L"]
+            + df["Na_µeq/L"]
+            + df["K_µeq/L"]
+            + df["NH4-N_µeq/L"]
+            + df["H_µeq/L"]
+            + df["LAl_µeq/L"]
+        )
+        df["Anions_µeq/L"] = (
+            df["Cl_µeq/L"]
+            + df["SO4_µeq/L"]
+            + df["NO3-N_µeq/L"]
+            + df["Alk_µeq/L"]
+            + df["A-_µeq/L"]
+        )
+    else:
+        missing_pars = [col for col in req_pars if col not in df.columns]
+        st.warning(
+            "WARNING: Cannot calculate **total cations and anions**. Stopping checks.  "
+            f"\n\nMissing parameters:  \n\n    {missing_pars}"
+        )
+
+    return df
+
+
 def check_ion_balance(df, thresh_pct=10):
     """Check the ion balance and highlight rows where the difference is greater than
     'thresh_pct'.
@@ -609,12 +805,243 @@ def check_ion_balance(df, thresh_pct=10):
         df: Dataframe of sumbitted water chemistry data
 
     Returns
-        None. Problems identified are printed to output.
+        DataFrame. Column 'Zdiff_pct' is added.
     """
-    st.subheader("Ion balance")
-    st.warning(f"WARNING: Check not yet implemented.")
+    assert 0 < thresh_pct < 100, "'thresh_pct' must be between 0 and 100."
+    req_pars = [
+        "Cations_µeq/L",
+        "Anions_µeq/L",
+    ]
+    df_pars = list(df.columns)
+    if all(par in df_pars for par in req_pars):
+        df["Zdiff_pct"] = (
+            100 * (df["Cations_µeq/L"] - df["Anions_µeq/L"]) / df["Cations_µeq/L"]
+        )
+        mask_df = df.query("(Zdiff_pct > @thresh_pct) or (Zdiff_pct < -@thresh_pct)")
+        if len(mask_df) > 0:
+            # Get relevant cols to display
+            cols = (
+                ["Code", "Name", "Date"]
+                + [col for col in df.columns if col.split("_")[-1] == "µeq/L"]
+                + ["Zdiff_pct"]
+            )
+            st.markdown(
+                f"The following {len(mask_df)} samples have a large difference between cations and anions:"
+            )
+            AgGrid(mask_df[cols].round(2), height=200)
+            with st.spinner("Preparing data for download..."):
+                st.markdown(
+                    "The ion balance dataset can be **downloaded to Excel** for further checking."
+                )
+                excel_bytes = prepare_df_for_download(mask_df)
+                st.download_button(
+                    label="Download data",
+                    data=excel_bytes,
+                    file_name="ion_balance_data.xlsx",
+                )
+            st.warning(f"WARNING: Possible issues with the ion balance.")
+        else:
+            st.success("OK!")
+    else:
+        st.warning(f"WARNING: Ion balance could not be calculated.")
 
-    return None
+    return df
+
+
+def calculate_ion_strength(df):
+    """Calculate ion strength.
+
+    Args
+        df: Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. Column 'ion_strength' is added.
+    """
+    req_pars = [
+        "Na_µeq/L",
+        "K_µeq/L",
+        "NH4-N_µeq/L",
+        "Cl_µeq/L",
+        "NO3-N_µeq/L",
+        "Alk_µeq/L",
+        "OH_µeq/L",
+        "H_µeq/L",
+        "Ca_µeq/L",
+        "Mg_µeq/L",
+        "SO4_µeq/L",
+        "LAl_µeq/L",
+    ]
+    df_pars = list(df.columns)
+    if all(par in df_pars for par in req_pars):
+        df["ion_strength"] = (
+            df["Na_µeq/L"]
+            + df["K_µeq/L"]
+            + df["NH4-N_µeq/L"]
+            + df["Cl_µeq/L"]
+            + df["NO3-N_µeq/L"]
+            + df["Alk_µeq/L"]
+            + df["OH_µeq/L"]
+            + df["H_µeq/L"]
+            + (
+                2
+                * (df["Ca_µeq/L"] + df["Mg_µeq/L"] + df["SO4_µeq/L"] + df["LAl_µeq/L"])
+            )
+        ) / 2e6
+    else:
+        missing_pars = [col for col in req_pars if col not in df.columns]
+        st.warning(
+            "WARNING: Cannot calculate **ion strength**. Stopping checks.  "
+            f"\n\nMissing parameters:  \n\n    {missing_pars}"
+        )
+
+    return df
+
+
+def calculate_gamma(df):
+    """Calculate gamma with z=1 and z=2.
+
+    Args
+        df: Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. Columns 'gamma_z=1' and 'gamma_z=2' are added.
+    """
+    if "ion_strength" in df.columns:
+        df["gamma_z=1"] = 10 ** -(
+            (
+                0.5 * ((df["ion_strength"] ** 0.5) / (1 + df["ion_strength"] ** 0.5))
+                - (0.3 * df["ion_strength"])
+            )
+        )
+        df["gamma_z=2"] = 10 ** -(
+            (
+                0.5
+                * 4
+                * ((df["ion_strength"] ** 0.5) / (1 + df["ion_strength"] ** 0.5))
+                - (0.3 * df["ion_strength"])
+            )
+        )
+    else:
+        st.warning(f"WARNING: Parameter 'ion_strength' not provided. Stopping checks.")
+
+    return df
+
+
+def calculate_theoretical_conductivity(df):
+    """Calculate theoretical conductivity..
+
+    Args
+        df: Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. Column 'CondTheory_mS/m at 25C' is added.
+    """
+    req_pars = [
+        "gamma_z=1",
+        "gamma_z=2",
+        "Ca_µeq/L",
+        "Mg_µeq/L",
+        "Na_µeq/L",
+        "K_µeq/L",
+        "NH4-N_µeq/L",
+        "Cl_µeq/L",
+        "SO4_µeq/L",
+        "NO3-N_µeq/L",
+        "Alk_µeq/L",
+        "H_µeq/L",
+        "LAl_µeq/L",
+        "OH_µeq/L",
+        "A-_µeq/L",
+        "Cond25_mS/m at 25C",
+    ]
+    df_pars = list(df.columns)
+    if all(par in df_pars for par in req_pars):
+        df["CondTheory_mS/m at 25C"] = (
+            0.0595 * df["Ca_µeq/L"] * df["gamma_z=2"]
+            + 0.053 * df["Mg_µeq/L"] * df["gamma_z=2"]
+            + 0.0501 * df["Na_µeq/L"] * df["gamma_z=1"]
+            + 0.0735 * df["K_µeq/L"] * df["gamma_z=1"]
+            + 0.0735 * df["NH4-N_µeq/L"] * df["gamma_z=1"]
+            + 0.0763 * df["Cl_µeq/L"] * df["gamma_z=1"]
+            + 0.08 * df["SO4_µeq/L"] * df["gamma_z=2"]
+            + 0.0714 * df["NO3-N_µeq/L"] * df["gamma_z=1"]
+            + 0.0445 * df["Alk_µeq/L"] * df["gamma_z=1"]
+            + 0.35 * df["H_µeq/L"] * df["gamma_z=1"]
+            + 0.061 * df["LAl_µeq/L"] * df["gamma_z=2"]
+            + 0.1983 * df["OH_µeq/L"] * df["gamma_z=1"]
+            + 0.05 * df["A-_µeq/L"] * df["gamma_z=1"]
+        ) / 10
+    else:
+        missing_pars = [col for col in req_pars if col not in df.columns]
+        st.warning(
+            "WARNING: Cannot calculate **theoretical conductivity**. Stopping checks.  "
+            f"\n\nMissing parameters:  \n\n    {missing_pars}"
+        )
+
+    return df
+
+
+def check_conductivity(df, thresh_pct=10):
+    """Compare measured and theoretical conductivity and highlight rows where the difference
+    is greater than 'thresh_pct'.
+
+    Args
+        df: Dataframe of sumbitted water chemistry data
+
+    Returns
+        DataFrame. Column 'Cond_Diff_pct' is added.
+    """
+    assert 0 < thresh_pct < 100, "'thresh_pct' must be between 0 and 100."
+    req_pars = [
+        "Cond25_mS/m at 25C",
+        "CondTheory_mS/m at 25C",
+    ]
+    df_pars = list(df.columns)
+    if all(par in df_pars for par in req_pars):
+        df["CondDiff_pct"] = (
+            100
+            * (df["CondTheory_mS/m at 25C"] - df["Cond25_mS/m at 25C"])
+            / df["CondTheory_mS/m at 25C"]
+        )
+        mask_df = df.query(
+            "(CondDiff_pct > @thresh_pct) or (CondDiff_pct < -@thresh_pct)"
+        )
+        if len(mask_df) > 0:
+            # Get relevant cols to display
+            cols = (
+                ["Code", "Name", "Date"]
+                + [col for col in df.columns if col.split("_")[-1] == "µeq/L"]
+                + [
+                    "Zdiff_pct",
+                    "ion_strength",
+                    "gamma_z=1",
+                    "gamma_z=2",
+                    "CondTheory_mS/m at 25C",
+                    "Cond25_mS/m at 25C",
+                    "CondDiff_pct",
+                ]
+            )
+            st.markdown(
+                f"The following {len(mask_df)} samples have a large difference between measured and theoretical conductivity:"
+            )
+            AgGrid(mask_df[cols].round(2), height=200)
+            with st.spinner("Preparing data for download..."):
+                st.markdown(
+                    "The theoretical conductivity dataset can be **downloaded to Excel** for further checking."
+                )
+                excel_bytes = prepare_df_for_download(mask_df)
+                st.download_button(
+                    label="Download data",
+                    data=excel_bytes,
+                    file_name="conductivity_data.xlsx",
+                )
+            st.warning(f"WARNING: Possible issues with theoretical conductivity.")
+        else:
+            st.success("OK!")
+    else:
+        st.warning(f"WARNING: Theoretical conductivity could not be calculated.")
+
+    return df
 
 
 def check_outliers(df, iqr_factor=3):
