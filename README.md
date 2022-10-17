@@ -12,7 +12,7 @@ For development and testing, run the app on the JupyterHub as follows:
 
  1. Clone this repository to the Hub
 
- 2. Open a terminal and `cd` into the `aquamonitor_qc_streamlit` folder
+ 2. Open a terminal and `cd` into the `icp_waters_qc_app` folder
 
  3. Run `streamlit run app.py` to start the app
 
