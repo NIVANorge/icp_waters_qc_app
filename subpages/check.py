@@ -710,7 +710,9 @@ def calculate_oh_and_h(df):
 
 
 def calculate_a_minus(df):
-    """Calculate A-.
+    """Calculate A-, which is an estimate of the charge contribution from organic acids.
+    The calculation implemented here is from Øyvind G and is an empirical simplification
+    of Hruška et al. (2003) https://doi.org/10.1021/es0201552.
 
     Args
         df: Dataframe of sumbitted water chemistry data
@@ -745,8 +747,8 @@ def calculate_cations_and_anions(df):
         "Ca_µeq/L",
         "Mg_µeq/L",
         "Na_µeq/L",
-        "K_µeq/L",
         "NH4-N_µeq/L",
+        "K_µeq/L",
         "H_µeq/L",
         "LAl_µeq/L",
         "Cl_µeq/L",
@@ -755,6 +757,16 @@ def calculate_cations_and_anions(df):
         "Alk_µeq/L",
         "A-_µeq/L",
     ]
+
+    opt_pars = [
+        "NH4-N_µeq/L",
+        "LAl_µeq/L",
+        "A-_µeq/L",
+    ]
+    for par in opt_pars:
+        if par not in df.columns:
+            df[par] = 0
+
     df_pars = list(df.columns)
     if all(par in df_pars for par in req_pars):
         df["Cations_µeq/L"] = (
@@ -858,6 +870,15 @@ def calculate_ion_strength(df):
         "SO4_µeq/L",
         "LAl_µeq/L",
     ]
+
+    opt_pars = [
+        "NH4-N_µeq/L",
+        "LAl_µeq/L",
+    ]
+    for par in opt_pars:
+        if par not in df.columns:
+            df[par] = 0
+
     df_pars = list(df.columns)
     if all(par in df_pars for par in req_pars):
         df["ion_strength"] = (
@@ -885,7 +906,10 @@ def calculate_ion_strength(df):
 
 
 def calculate_gamma(df):
-    """Calculate gamma with z=1 and z=2.
+    """Calculate gamma with z=1 and z=2. The gamma parameters are the activity coefficients
+    of the ions, with z=1 for monovalent and z=2 for divalent ions. The parameters are used
+    to compensate for the non-ideal behavior of real waters. The version implemented here
+    comes from Garmo G and uses the "Davies approach".
 
     Args
         df: Dataframe of sumbitted water chemistry data
@@ -943,6 +967,16 @@ def calculate_theoretical_conductivity(df):
         "A-_µeq/L",
         "Cond25_mS/m at 25C",
     ]
+
+    opt_pars = [
+        "NH4-N_µeq/L",
+        "LAl_µeq/L",
+        "A-_µeq/L",
+    ]
+    for par in opt_pars:
+        if par not in df.columns:
+            df[par] = 0
+
     df_pars = list(df.columns)
     if all(par in df_pars for par in req_pars):
         df["CondTheory_mS/m at 25C"] = (
