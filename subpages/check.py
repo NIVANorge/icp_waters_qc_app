@@ -89,6 +89,14 @@ def app():
             st.markdown(
                 "Please **scroll down** to see results from the quality checks."
             )
+            st.info(
+                """**Tip:** In the code below, **`Errors`** (red message boxes) highlight problems that 
+                must be fixed before data can be added to the ICPW database. **`Warnings`** (yellow 
+                message boxes) highlight potential issues that should be checked, but which will not 
+                prevent data from being submitted.
+            """,
+                icon="ℹ️",
+            )
 
         with st.spinner("Checking data..."):
             check_columns(df)
@@ -108,12 +116,12 @@ def app():
             df = calculate_oh_and_h(df)
             df = calculate_a_minus(df)
             df = calculate_cations_and_anions(df)
-            df = check_ion_balance(df, thresh_pct=10)
+            df = check_ion_balance(df, thresh_pct=20)
             st.subheader("Conductivity")
             df = calculate_ion_strength(df)
             df = calculate_gamma(df)
             df = calculate_theoretical_conductivity(df)
-            df = check_conductivity(df, thresh_pct=10)
+            df = check_conductivity(df, thresh_pct=20)
             check_outliers(df, thresh=3.5)
 
     return None
