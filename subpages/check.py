@@ -381,7 +381,7 @@ def check_stations(df, stn_df):
         true_name = stn_df.query("station_code == @site_id")["station_name"].values
         names = df.query("Code == @site_id")["Name"].unique()
 
-        if len(names) > 1:
+        if (len(names) > 1) and (len(true_name) > 0):
             msg += f"\n * **{site_id}** ({true_name[0]}) has names: `{names}`"
 
     if msg != "":
@@ -407,17 +407,20 @@ def check_stations(df, stn_df):
         )
         st.markdown(msg)
 
-    st.markdown("The template contains data for the following stations:")
     template_stns = df["Code"].unique()
     country_stn_df = stn_df.query("station_code in @template_stns")
-    stn_map = quickmap(
-        country_stn_df,
-        cluster=True,
-        popup="station_code",
-        aerial_imagery=True,
-        kartverket=False,
-    )
-    folium_static(stn_map, width=700)
+    st.markdown("The template contains data for the following stations:")
+    if len(country_stn_df) > 0:
+        stn_map = quickmap(
+            country_stn_df,
+            cluster=True,
+            popup="station_code",
+            aerial_imagery=True,
+            kartverket=False,
+        )
+        folium_static(stn_map, width=700)
+    else:
+        n_errors += 1
 
     if n_errors == 0:
         st.success("OK!")
