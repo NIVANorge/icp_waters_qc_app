@@ -23,9 +23,8 @@ def app():
     )
     with st.expander("Getting started"):
         st.markdown(
-            """To begin, click the `Check data` option in the left sidebar. Select your `country` from the 
-               drop-down list, then click the `Browse files` button to upload a completed data template. 
-               Dragging and dropping a file should also work.
+            """To begin, click the `Check data` option in the left sidebar, then click the `Browse files` button 
+               to upload a completed data template. Dragging and dropping a file should also work.
         """
         )
         st.markdown(
