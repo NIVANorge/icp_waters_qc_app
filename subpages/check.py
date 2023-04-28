@@ -1103,10 +1103,7 @@ def double_mad_from_median(data, thresh=3.5):
     Returns
         Array of Bools where ones indicate outliers.
     """
-    # Remove NaNs
-    data = data[~np.isnan(data)]
-
-    m = np.median(data)
+    m = np.nanmedian(data)
     abs_dev = np.abs(data - m)
     left_mad = np.median(abs_dev[data <= m])
     right_mad = np.median(abs_dev[data >= m])
