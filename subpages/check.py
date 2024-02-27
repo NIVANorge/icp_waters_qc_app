@@ -1195,7 +1195,7 @@ def quickmap(
     lat_col="latitude",
     popup=None,
     cluster=False,
-    tiles="Stamen Terrain",
+    tiles="OpenStreetMap",
     aerial_imagery=False,
     kartverket=False,
     layer_name="Stations",
