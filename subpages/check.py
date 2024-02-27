@@ -619,23 +619,26 @@ def check_lal_ph(df):
         None. Problems identified are printed to output.
     """
     st.subheader("LAl and pH")
-    mask_df = df[
-        [
-            "Code",
-            "Date",
-            "pH",
-            "LAl_µg/L",
-        ]
-    ].copy()
-    mask_df = mask_df[(mask_df["pH"] > 6.4) & (mask_df["LAl_µg/L"] > 20)]
-    if len(mask_df) > 0:
-        st.markdown(
-            f"The following {len(mask_df)} samples have LAl > 20 µg/l and pH > 6.4, which is considered unlikely:"
-        )
-        AgGrid(mask_df, height=200)
-        st.warning(f"WARNING: Possible issues with LAl and/or pH.")
+    if "pH" in df.columns and "LAl_µg/L" in df.columns: 
+        mask_df = df[
+            [
+                "Code",
+                "Date",
+                "pH",
+                "LAl_µg/L",
+            ]
+        ].copy()
+        mask_df = mask_df[(mask_df["pH"] > 6.4) & (mask_df["LAl_µg/L"] > 20)]
+        if len(mask_df) > 0:
+            st.markdown(
+                f"The following {len(mask_df)} samples have LAl > 20 µg/l and pH > 6.4, which is considered unlikely:"
+            )
+            AgGrid(mask_df, height=200)
+            st.warning(f"WARNING: Possible issues with LAl and/or pH.")
+        else:
+            st.success("OK!")
     else:
-        st.success("OK!")
+        st.warning(f"WARNING: LAl and/or pH not provided.")
 
     return None
 
