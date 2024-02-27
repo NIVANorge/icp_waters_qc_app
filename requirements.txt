@@ -1,8 +1,8 @@
-folium==0.12.1
-numpy==1.22.4
-openpyxl==3.0.10
-pandas==1.4.4
-streamlit==1.13.0
-streamlit-aggrid==0.3.3
-streamlit-folium==0.6.15
-streamlit-option-menu==0.3.2
+folium
+numpy
+openpyxl
+pandas
+streamlit
+streamlit-aggrid
+streamlit-folium
+streamlit-option-menu
