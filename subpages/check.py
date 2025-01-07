@@ -41,6 +41,8 @@ OPTIONAL_COLS = [
     "ORTP_µgP/L",
     "OKS_mgO/L",
     "SiO2_mgSiO2/L",
+    "CO3-ALK_µeq/L",
+    "CHLA_µg/L",
     "F_µg/L",
     "Fe_Total_µg/L",
     "Mn_Total_µg/L",
@@ -199,7 +201,7 @@ def check_columns(df):
     if n_errors > 0:
         st.error(
             "ERROR: Some column names are not recognised. Please use the template available "
-            "[here](https://github.com/NIVANorge/icp_waters_qc_app/blob/main/data/icpw_input_template_chem_v0-4.xlsx)."
+            "[here](https://github.com/NIVANorge/icp_waters_qc_app/blob/main/data/icpw_input_template_chem_v0-5.xlsx)."
         )
         st.stop()
     else:
@@ -222,7 +224,7 @@ def check_parameters(df):
         if (col not in df.columns) or (df[col].isna().all()):
             n_errors += 1
             st.markdown(
-                f" * Column **{col}** is required (it is part of the `minimum` parameter group)"
+                f" * Column **{col}** is required (it is part of the `Priority 1` parameter group)"
             )
     if n_errors > 0:
         st.error(
@@ -247,7 +249,7 @@ def check_parameters(df):
                 st.markdown(f" * Data for **{col}** not provided")
     if n_errors > 0:
         st.warning(
-            "WARNING: Please consider adding data for additional parameters, if possible. See the `Info` "
+            "WARNING: Please consider adding data for `Priority 2` parameters, if possible. See the `Info` "
             "worksheet of the template for details."
         )
     else:
@@ -306,7 +308,7 @@ def check_greater_than_zero(df):
         None. Problems identified are printed to output.
     """
     st.header("Checking for negative and zero values")
-    allow_neg_cols = ["Alk_µeq/L", "TEMP_C"]
+    allow_neg_cols = ["ALK_µeq/L", "CO3-ALK_µeq/L", "TEMP_C"]
     allow_zero_cols = ["LAl_µg/L"]
     gt_zero_cols = [
         col
@@ -347,8 +349,8 @@ def check_greater_than_zero(df):
     else:
         st.error(
             "ERROR: Some reported values are less than or equal to zero. Values should all be "
-            "positive, except for column `LAl_µg/L` (which permit values of zero), "
-            "and columns `Alk_µeq/L` and `TEMP_C` (which can be negative)."
+            "positive, except for column `LAl_µg/L` (which permits values of zero), "
+            "and columns `ALK_µeq/L`, `CO3-ALK_µeq/L` and `TEMP_C` (which can be negative)."
         )
         # st.stop()
 
@@ -619,7 +621,7 @@ def check_lal_ph(df):
         None. Problems identified are printed to output.
     """
     st.subheader("LAl and pH")
-    if "pH" in df.columns and "LAl_µg/L" in df.columns: 
+    if "pH" in df.columns and "LAl_µg/L" in df.columns:
         mask_df = df[
             [
                 "Code",
@@ -723,13 +725,20 @@ def calculate_oh_and_h(df):
     return df
 
 
-def calculate_a_minus(df):
+def calculate_a_minus(df, sd=10.5):
     """Calculate A-, which is an estimate of the charge contribution from organic acids.
-    The calculation implemented here is from Øyvind G and is an empirical simplification
-    of Hruška et al. (2003) https://doi.org/10.1021/es0201552.
+    The calculation implemented here is based on the model of Oliver et al. (1983):
+
+        https://doi.org/10.1016/0016-7037(83)90218-1
+
+    The default site density is based on Vogt et al. (2024):
+
+        https://doi.org/10.3390/w16121716
 
     Args
         df: Dataframe of sumbitted water chemistry data
+        sd: Float. Default 10.5. Density of weak acid functional sites present in DOM
+            (in µEq/mg C).
 
     Returns
         DataFrame. Column 'A-_µeq/L' is added.
@@ -737,7 +746,10 @@ def calculate_a_minus(df):
     req_pars = ["TOC_mgC/L", "pH"]
     df_pars = list(df.columns)
     if all(par in df_pars for par in req_pars):
-        df["A-_µeq/L"] = df["TOC_mgC/L"] * (1.77 * df["pH"] - 3)
+        exponent = 0.96 + 0.9 * df["pH"] - 0.039 * df["pH"] ** 2
+        df["A-_µeq/L"] = (
+            df["TOC_mgC/L"] * sd * 10**-exponent / (10**-exponent + 10**-df["pH"])
+        )
     else:
         missing_pars = [col for col in req_pars if col not in df.columns]
         st.warning(
@@ -768,7 +780,7 @@ def calculate_cations_and_anions(df):
         "Cl_µeq/L",
         "SO4_µeq/L",
         "NO3-N_µeq/L",
-        "Alk_µeq/L",
+        "ALK_µeq/L",
         "A-_µeq/L",
     ]
 
@@ -796,7 +808,7 @@ def calculate_cations_and_anions(df):
             df["Cl_µeq/L"]
             + df["SO4_µeq/L"]
             + df["NO3-N_µeq/L"]
-            + df["Alk_µeq/L"]
+            + df["ALK_µeq/L"]
             + df["A-_µeq/L"]
         )
     else:
@@ -876,7 +888,7 @@ def calculate_ion_strength(df):
         "NH4-N_µeq/L",
         "Cl_µeq/L",
         "NO3-N_µeq/L",
-        "Alk_µeq/L",
+        "ALK_µeq/L",
         "OH_µeq/L",
         "H_µeq/L",
         "Ca_µeq/L",
@@ -901,7 +913,7 @@ def calculate_ion_strength(df):
             + df["NH4-N_µeq/L"]
             + df["Cl_µeq/L"]
             + df["NO3-N_µeq/L"]
-            + df["Alk_µeq/L"]
+            + df["ALK_µeq/L"]
             + df["OH_µeq/L"]
             + df["H_µeq/L"]
             + (
@@ -974,7 +986,7 @@ def calculate_theoretical_conductivity(df):
         "Cl_µeq/L",
         "SO4_µeq/L",
         "NO3-N_µeq/L",
-        "Alk_µeq/L",
+        "ALK_µeq/L",
         "H_µeq/L",
         "LAl_µeq/L",
         "OH_µeq/L",
@@ -1002,7 +1014,7 @@ def calculate_theoretical_conductivity(df):
             + 0.0763 * df["Cl_µeq/L"] * df["gamma_z=1"]
             + 0.08 * df["SO4_µeq/L"] * df["gamma_z=2"]
             + 0.0714 * df["NO3-N_µeq/L"] * df["gamma_z=1"]
-            + 0.0445 * df["Alk_µeq/L"] * df["gamma_z=1"]
+            + 0.0445 * df["ALK_µeq/L"] * df["gamma_z=1"]
             + 0.35 * df["H_µeq/L"] * df["gamma_z=1"]
             + 0.061 * df["LAl_µeq/L"] * df["gamma_z=2"]
             + 0.1983 * df["OH_µeq/L"] * df["gamma_z=1"]
