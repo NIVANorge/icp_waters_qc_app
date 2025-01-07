@@ -19,7 +19,7 @@ MINIMUM_COLS = [
     "Mg_mg/L",
     "Na_mg/L",
     "K_mg/L",
-    "Alk_µeq/L",
+    "ALK_µeq/L",
     "SO4_mg/L",
     "NO3-N_µgN/L",
     "Cl_mg/L",
