@@ -501,7 +501,9 @@ def check_no3_totn(df):
 
     for col in ["NO3-N_µgN/L", "TOTN_µgN/L", "TOC_mgC/L"]:
         mask_df[col].fillna(0, inplace=True)
-        mask_df[col] = pd.to_numeric(mask_df[col].astype(str).str.strip("<"))
+        mask_df[col] = pd.to_numeric(
+            mask_df[col].astype(str).str.strip("<").str.replace(",", ".")
+        )
         mask_df[mask_df == 0] = np.nan
     mask = mask_df["NO3-N_µgN/L"] > mask_df["TOTN_µgN/L"]
     mask_df = mask_df[mask]
@@ -549,7 +551,9 @@ def check_po4_totp(df):
 
     for col in ["ORTP_µgP/L", "TOTP_µgP/L"]:
         mask_df[col].fillna(0, inplace=True)
-        mask_df[col] = pd.to_numeric(mask_df[col].astype(str).str.strip("<"))
+        mask_df[col] = pd.to_numeric(
+            mask_df[col].astype(str).str.strip("<").str.replace(",", ".")
+        )
         mask_df[mask_df == 0] = np.nan
     mask = mask_df["ORTP_µgP/L"] > mask_df["TOTP_µgP/L"]
     mask_df = mask_df[mask]
@@ -591,7 +595,9 @@ def check_ral_ilal_lal(df):
 
     for col in ["RAl_µg/L", "ILAl_µg/L", "LAl_µg/L"]:
         mask_df[col].fillna(0, inplace=True)
-        mask_df[col] = pd.to_numeric(mask_df[col].astype(str).str.strip("<"))
+        mask_df[col] = pd.to_numeric(
+            mask_df[col].astype(str).str.strip("<").str.replace(",", ".")
+        )
     mask_df["LAl_Expected_µg/L"] = (mask_df["RAl_µg/L"] - mask_df["ILAl_µg/L"]).round(1)
     mask_df[mask_df["LAl_Expected_µg/L"] < 0] = 0
     mask_df["LAl_µg/L"] = mask_df["LAl_µg/L"].round(1)
@@ -658,7 +664,7 @@ def convert_to_numeric(df):
     num_cols = [col for col in df.columns if col not in IDX_COLS]
     for col in num_cols:
         df[col] = pd.to_numeric(
-            df[col].fillna(-9999).astype(str).str.strip("<"),
+            df[col].fillna(-9999).astype(str).str.strip("<").str.replace(",", "."),
             errors="coerce",
         )
         df[col].replace(-9999, np.nan, inplace=True)
@@ -748,7 +754,7 @@ def calculate_a_minus(df, sd=10.5):
     if all(par in df_pars for par in req_pars):
         exponent = 0.96 + 0.9 * df["pH"] - 0.039 * df["pH"] ** 2
         df["A-_µeq/L"] = (
-            df["TOC_mgC/L"] * sd * 10**-exponent / (10**-exponent + 10**-df["pH"])
+            df["TOC_mgC/L"] * sd * 10**-exponent / (10**-exponent + 10 ** -df["pH"])
         )
     else:
         missing_pars = [col for col in req_pars if col not in df.columns]
