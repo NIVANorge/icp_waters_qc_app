@@ -272,14 +272,14 @@ def check_numeric(df):
     num_cols = [col for col in df.columns if col not in IDX_COLS]
     n_errors = 0
     for col in num_cols:
-        # num_series = pd.to_numeric(
-        #     df[col].fillna(-9999).astype(str).str.strip("<").str.replace(",", "."),
-        #     errors="coerce",
-        # )
         num_series = pd.to_numeric(
-            df[col].fillna(-9999).astype(str).str.strip("<"),
+            df[col].fillna(-9999).astype(str).str.strip("<").str.replace(",", "."),
             errors="coerce",
         )
+        # num_series = pd.to_numeric(
+        #     df[col].fillna(-9999).astype(str).str.strip("<"),
+        #     errors="coerce",
+        # )
         non_num_vals = df[pd.isna(num_series)][col].values
         if len(non_num_vals) > 0:
             n_errors += 1
@@ -317,13 +317,13 @@ def check_greater_than_zero(df):
     ]
     n_errors = 0
     for col in gt_zero_cols:
-        # num_series = pd.to_numeric(
-        #     df[col].fillna(-9999).astype(str).str.strip("<").str.replace(",", ".")
-        # )
         num_series = pd.to_numeric(
-            df[col].fillna(-9999).astype(str).str.strip("<"),
-            errors="coerce",
+            df[col].fillna(-9999).astype(str).str.strip("<").str.replace(",", ".")
         )
+        # num_series = pd.to_numeric(
+        #     df[col].fillna(-9999).astype(str).str.strip("<"),
+        #     errors="coerce",
+        # )
         num_series[num_series == -9999] = np.nan
         if num_series.min() <= 0:
             n_errors += 1
@@ -332,13 +332,13 @@ def check_greater_than_zero(df):
             )
 
     for col in allow_zero_cols:
-        # num_series = pd.to_numeric(
-        #     df[col].fillna(-9999).astype(str).str.strip("<").str.replace(",", ".")
-        # )
         num_series = pd.to_numeric(
-            df[col].fillna(-9999).astype(str).str.strip("<"),
-            errors="coerce",
+            df[col].fillna(-9999).astype(str).str.strip("<").str.replace(",", ".")
         )
+        # num_series = pd.to_numeric(
+        #     df[col].fillna(-9999).astype(str).str.strip("<"),
+        #     errors="coerce",
+        # )
         num_series[num_series == -9999] = np.nan
         if num_series.min() < 0:
             n_errors += 1
